@@ -85,6 +85,16 @@ agent.execute_task(task)
    - Create documentation
    - Provide results
 
+### GUI
+
+You can interact with the agent using a minimal PyQt6 GUI:
+
+```bash
+python -m autonomous_engineering_agent.gui.simple_gui
+```
+
+The GUI provides a dashboard with project metrics and a Kanban style task board.
+
 ## Development
 
 - Run tests: `pytest tests/`
