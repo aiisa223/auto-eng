@@ -11,6 +11,12 @@ An advanced, fully autonomous AI system powered by Ollama Gemma 3 for executing 
 - **Self-Critique System**: Autonomous review and improvement of solutions
 - **Document Compilation**: Professional-grade technical documentation generation
 
+### Critique Engine Improvements
+
+The self-critique system now includes lenient scoring and robust response parsing.
+If JSON parsing fails, the engine extracts a score from the text or falls back to
+a passing score so tasks don't fail unnecessarily.
+
 ## Prerequisites
 
 - Python 3.9+
