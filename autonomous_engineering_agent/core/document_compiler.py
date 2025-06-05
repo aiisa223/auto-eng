@@ -199,10 +199,11 @@ class DocumentCompiler:
                 md_content += "| " + " | ".join(str(cell) for cell in row) + " |\n"
             md_content += "\n"
             
-        # Save the document with UTF-8 encoding
+        # Sanitize the file name
+        sanitized_title = content.get('title', 'report').lower().replace(' ', '_').replace('\n', '_').replace(':', '_').replace('<', '_').replace('>', '_').replace('|', '_').replace('?', '_').replace('*', '_')
         output_path = os.path.join(
             self.output_dir,
-            f"{content.get('title', 'report').lower().replace(' ', '_')}.md"
+            f"{sanitized_title}.md"
         )
         with open(output_path, "w", encoding="utf-8") as f:
             f.write(md_content)

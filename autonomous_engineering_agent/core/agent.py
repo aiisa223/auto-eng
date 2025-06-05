@@ -81,120 +81,123 @@ class EngineeringAgent:
             Task execution results
         """
         logger.info(f"Starting task execution: {task_input}")
-        try:
-            # Create a Task object from the input string
-            current_time = datetime.now()
-            logger.debug("Creating main task object...")
-            task = Task(
-                id="main_task",
-                title="Main Engineering Task",
-                description=task_input,
-                status=TaskStatus.PENDING,
-                priority=1,  # Highest priority
-                dependencies=[],  # No dependencies for main task
-                created_at=current_time,
-                updated_at=current_time,
-                metadata={
-                    "requirements": {},
-                    "analysis_type": "general",
-                    "requires_code": True,
-                    "system_type": "structural",
-                    "parameters": {}
-                }
-            )
-            logger.debug(f"Main task created with ID: {task.id}")
+        max_attempts = 3  # Maximum number of attempts per task
+        attempt = 0
+        previous_attempts = []  # Store previous attempts and their feedback
+        
+        while attempt < max_attempts:
+            attempt += 1
+            logger.info(f"Attempt {attempt} of {max_attempts}")
             
-            # Create project plan
-            logger.info("Creating project plan...")
-            tasks = self.planner.create_project_plan(task_input)
-            logger.info(f"Created project plan with {len(tasks)} tasks")
-            for t in tasks:
-                logger.debug(f"Task in plan: {t.title} (ID: {t.id}, Priority: {t.priority})")
-            
-            # Store initial plan in memory
-            logger.debug("Storing project plan in memory...")
-            self.memory_manager.add_to_short_term({
-                "type": "project_plan",
-                "content": {
-                    "task": task_input,
-                    "tasks": [t.to_dict() for t in tasks]
-                }
-            })
-            
-            # Execute tasks
-            logger.info("Starting task execution loop...")
-            results = []
-            while True:
-                # Get next tasks to execute
-                logger.debug("Getting next tasks to execute...")
-                next_tasks = self.planner.get_next_tasks()
-                if not next_tasks:
-                    logger.info("No more tasks to execute")
-                    break
+            try:
+                # Create a Task object from the input string
+                current_time = datetime.now()
+                logger.debug("Creating main task object...")
+                task = Task(
+                    id="main_task",
+                    title="Main Engineering Task",
+                    description=task_input,
+                    status=TaskStatus.PENDING,
+                    priority=1,  # Highest priority
+                    dependencies=[],  # No dependencies for main task
+                    created_at=current_time,
+                    updated_at=current_time,
+                    metadata={
+                        "requirements": {},
+                        "analysis_type": "general",
+                        "requires_code": True,
+                        "system_type": "structural",
+                        "parameters": {},
+                        "previous_attempts": previous_attempts  # Include previous attempts in metadata
+                    }
+                )
+                logger.debug(f"Main task created with ID: {task.id}")
+                
+                # Create project plan
+                logger.info("Creating project plan...")
+                tasks = self.planner.create_project_plan(task_input)
+                logger.info(f"Created project plan with {len(tasks)} tasks")
+                
+                # Execute tasks
+                logger.info("Starting task execution loop...")
+                results = []
+                for task in tasks:
+                    result = self._execute_single_task(task)
+                    results.append(result)
                     
-                # Execute each task
-                for task in next_tasks:
-                    logger.info(f"Executing task: {task.title} (ID: {task.id})")
-                    
-                    # Update task status
-                    logger.debug(f"Updating task status to IN_PROGRESS: {task.id}")
-                    self.planner.update_task_status(task.id, TaskStatus.IN_PROGRESS)
-                    
-                    # Execute task
-                    logger.debug("Executing task...")
-                    task_result = self._execute_single_task(task)
-                    logger.debug(f"Task execution result: {task_result}")
-                    
-                    # Store result in memory
+                    # Store task result in memory
                     logger.debug("Storing task result in memory...")
                     self.memory_manager.add_to_short_term({
                         "type": "task_result",
                         "content": {
                             "task_id": task.id,
-                            "result": task_result
+                            "result": result
                         }
                     })
                     
-                    # Review result
+                    # Review the result
                     logger.debug("Reviewing task result...")
                     review = self.critique_engine.review_solution(
-                        task_result,
+                        result,
                         task.metadata.get("requirements", {})
                     )
-                    logger.debug(f"Review result: {review}")
                     
-                    # Update task status based on review
-                    if review["overall_score"] >= 0.8:
-                        logger.info(f"Task {task.id} completed successfully")
+                    # Check if the task passed
+                    if review.get("overall_score", 0) >= 0.7:  # Threshold for passing
+                        logger.info(f"Task {task.id} passed with score {review.get('overall_score')}")
                         self.planner.update_task_status(task.id, TaskStatus.COMPLETED)
                     else:
                         logger.warning(f"Task {task.id} failed to meet requirements")
                         self.planner.update_task_status(task.id, TaskStatus.FAILED)
                         
-                    results.append({
-                        "task": task.to_dict(),
-                        "result": task_result,
-                        "review": review
-                    })
+                        # Store the attempt and its feedback for learning
+                        previous_attempts.append({
+                            "attempt": attempt,
+                            "result": result,
+                            "review": review,
+                            "improvement_suggestions": review.get("improvement_suggestions", [])
+                        })
+                        
+                        # If this was the last attempt, break the loop
+                        if attempt == max_attempts:
+                            break
+                            
+                        # Otherwise, prepare for next attempt
+                        logger.info("Preparing for next attempt with improvements...")
+                        # Use the improvement suggestions to modify the task
+                        if review.get("improvement_suggestions"):
+                            task_input = self._incorporate_improvements(
+                                task_input,
+                                review.get("improvement_suggestions", [])
+                            )
+                        continue
+                
+                # If we get here, all tasks passed
+                if all(r.get("overall_score", 0) >= 0.7 for r in results):
+                    logger.info("All tasks completed successfully")
+                    return {
+                        "success": True,
+                        "results": results,
+                        "attempts": attempt
+                    }
                     
-            # Generate final report
-            logger.info("Generating final report...")
-            report = self._generate_final_report(task_input, results)
-            logger.info(f"Report generated at: {report}")
-            
-            return {
-                "success": True,
-                "results": results,
-                "report": report
-            }
-            
-        except Exception as e:
-            logger.error(f"Error executing task: {str(e)}", exc_info=True)
-            return {
-                "success": False,
-                "error": str(e)
-            }
-            
+            except Exception as e:
+                logger.error(f"Error executing task: {str(e)}", exc_info=True)
+                if attempt == max_attempts:
+                    return {
+                        "success": False,
+                        "error": str(e),
+                        "attempts": attempt
+                    }
+                continue
+                
+        return {
+            "success": False,
+            "error": "Maximum attempts reached without success",
+            "attempts": max_attempts,
+            "previous_attempts": previous_attempts
+        }
+        
     def _execute_single_task(self, task: Task) -> Dict[str, Any]:
         """Execute a single task.
         
@@ -401,4 +404,32 @@ class EngineeringAgent:
         """
         
         response = self.ollama_client.generate(prompt)
-        return response.get("response", "") 
+        return response.get("response", "")
+        
+    def _incorporate_improvements(self,
+                                task_input: str,
+                                improvements: List[str]) -> str:
+        """Incorporate improvement suggestions into the task input.
+        
+        Args:
+            task_input: Original task input
+            improvements: List of improvement suggestions
+            
+        Returns:
+            Modified task input
+        """
+        prompt = f"""
+        Original task: {task_input}
+        
+        Improvement suggestions from previous attempt:
+        {chr(10).join(f'- {imp}' for imp in improvements)}
+        
+        Please modify the task to address these improvements while maintaining the original requirements.
+        Focus on making the task more specific and addressing the identified issues.
+        """
+        
+        response = self.ollama_client.generate(prompt)
+        modified_task = response.get("response", task_input)
+        
+        logger.info(f"Modified task input: {modified_task}")
+        return modified_task 

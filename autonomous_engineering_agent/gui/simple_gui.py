@@ -83,7 +83,7 @@ class DashboardTab(QWidget):
         self.metrics_label.setText(metrics)
 
         self.recent_list.clear()
-        docs_dir = self.agent.document_compiler.docs_dir
+        docs_dir = self.agent.document_compiler.output_dir
         if os.path.exists(docs_dir):
             for fname in sorted(os.listdir(docs_dir))[-5:]:
                 self.recent_list.addItem(fname)
